@@ -12,7 +12,7 @@ GAMMA = 0.99
 
 def get_models(nr_inputs, nr_actions, lr):
     input_shape = (nr_inputs,)
-    nr_hidden = 512
+    nr_hidden = 128
 
     X_input = Input(input_shape)
 
@@ -39,12 +39,12 @@ def get_models(nr_inputs, nr_actions, lr):
 
 class Neural_Network:
     def __init__(self):
-        self.lr = 0.000025
+        self.lr = 0.01
 
         self.states, self.actions, self.rewards = [], [], []
 
-        self.nr_inputs = 3+7*(NR_ENEMIES_INIT+NR_ALLIES_INIT)
-        self.action_size = 360
+        self.nr_inputs = NR_INPUTS
+        self.action_size = NR_ACTIONS
 
         self.Actor, self.Critic = get_models(nr_inputs=self.nr_inputs, nr_actions=self.action_size, lr=self.lr)
 
@@ -57,6 +57,7 @@ class Neural_Network:
 
     def act(self, state):
         prediction = self.Actor.predict(state)[0]
+        # print(prediction)
         action = np.random.choice(self.action_size, p=prediction)
         # action = np.argmax(prediction)
         return action
@@ -65,12 +66,14 @@ class Neural_Network:
         # Compute the gamma-discounted rewards over an episode
         running_add = 0
         discounted_r = np.zeros_like(reward)
+        # print(reward)
         for i in reversed(range(0,len(reward))):
             running_add = running_add * GAMMA + reward[i]
             discounted_r[i] = running_add
 
         discounted_r -= np.mean(discounted_r) # normalizing the result
-        discounted_r /= np.std(discounted_r) # divide by standard deviation
+        discounted_r /= np.std(discounted_r) + EPS # divide by standard deviation
+        # print(discounted_r)
         return discounted_r
 
     def update(self):
@@ -81,8 +84,12 @@ class Neural_Network:
         # Compute discounted rewards
         discounted_r = self.discount_rewards(self.rewards)
 
+        # print(discounted_r)
+
         # Get Critic network predictions
         values = self.Critic.predict(states)[:, 0]
+        # print(values)
+
         # Compute advantages
         advantages = discounted_r - values
         # training Actor and Critic networks

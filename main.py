@@ -23,24 +23,28 @@ def render_molecule(screen, molecules):
 
 def eval_position(action, molecules_updated, in_game_score):
     # molecules copied
-    sum = 0
+    action_score = 0
 
-    molecules_updated[-1].alpha_dir = action/360*2*PI
+    molecules_updated[-1].alpha_dir = action/NR_ACTIONS*2*PI
     molecules_updated[-1].update()
 
-    for i, m in enumerate(molecules[:-1]):
-        if molecules[-1].is_coliding(m):
-            if m.status == ENEMY:
-                sum -= 1
-            else:
-                sum += 1
-
-    sum += in_game_score
     for i, m in enumerate(molecules_updated[:-1]):
-        sum += 5*m.r * m.status / molecules_updated[-1].distance_to(m)
+        if molecules_updated[-1].is_coliding(m):
+            if m.status == ENEMY:
+                action_score -= 1
+            else:
+                action_score += 1
 
-    print(sum)
-    return sum
+    p = molecules_updated[-1]
+    PR = 2*p.r
+    if p.x - PR < 0 or p.x + PR > GAME_WIDTH or p.y - PR < 0 or p.y + PR > GAME_HEIGHT:
+        action_score -= 10
+
+    action_score += in_game_score
+    for i, m in enumerate(molecules_updated[:-1]):
+        action_score += 0.5 * m.r * m.status / molecules_updated[-1].distance_to(m)
+
+    return action_score
 
 
 def init_new_game():
@@ -70,6 +74,7 @@ init_new_game()
 
 running = True
 frame = 0
+generation = 1
 while running:
 
     # Did the user click the window close button?
@@ -93,22 +98,27 @@ while running:
 
     render_molecule(screen, molecules)
 
-    input_values = [molecules[-1].x, molecules[-1].y, molecules[-1].speed]
+    input_values = [
+        molecules[-1].x / GAME_WIDTH, 
+        molecules[-1].y / GAME_HEIGHT,
+        molecules[-1].r / MAXIMUM_RADIUS, 
+        molecules[-1].speed / MAXIMUM_RADIUS
+    ]
     for i, m in enumerate(molecules[:-1]):
-        input_values.append(m.x)
-        input_values.append(m.y)
-        input_values.append(m.r)
-        input_values.append(m.status)
-        input_values.append(m.speed)
-        input_values.append(m.alpha_dir)
-        input_values.append(molecules[-1].distance_to(m))
+        input_values.append(m.x / GAME_WIDTH)
+        input_values.append(m.y / GAME_HEIGHT)
+        input_values.append(m.r / MAXIMUM_RADIUS)
+        input_values.append(m.speed / MAXIMUM_RADIUS)
+        input_values.append((m.status + 1) / 2)
+        input_values.append(m.alpha_dir / (2*PI))
+        input_values.append(molecules[-1].distance_to(m) / GAME_MAX_DISTANCE)
     
     for i, m in enumerate(molecules[:-1]):
-        # m.update()
-        pass
+        m.update()
     
-    action = neural_network.feed(input_values, eval_func=eval_position, molecules=copy.deepcopy(molecules), in_game_score = score)
-    molecules[-1].alpha_dir = action/360*2*PI
+    action = neural_network.feed(input_values, eval_func=eval_position, 
+                                molecules=copy.deepcopy(molecules), in_game_score = score)
+    molecules[-1].alpha_dir = action/NR_ACTIONS*2*PI
     molecules[-1].update()
 
     for i, m in enumerate(molecules[:-1]):
@@ -132,10 +142,12 @@ while running:
     pygame.display.update()
 
     if nr_allies_left == 0 or frame >= NR_MAX_FRAMES:
-        print(score)
+        if generation % 10 == 0:
+            print("Generation[", generation, "]: " , score, sep="")
         neural_network.update()
         init_new_game()
         frame = 0
+        generation += 1
 
     frame += 1
 
