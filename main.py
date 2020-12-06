@@ -1,12 +1,18 @@
 import pygame
 from nn_model import *
 import copy
+import time
 
 molecules = None 
 score = None
 nr_allies_left = None
 
 neural_network = Neural_Network()
+if TEST_MODE:
+    neural_network.load(TEST_MODEL_ID, False)
+
+if CONTINUE_MODEL:
+    neural_network.load(TEST_MODEL_ID, True)
 
 def render_molecule(screen, molecules):
     for m in molecules:
@@ -47,6 +53,26 @@ def eval_position(action, molecules_updated, in_game_score):
     return action_score
 
 
+def eval_score(action, molecules_updated, in_game_score):
+    return 0.0 + in_game_score
+
+
+def eval_imidiate_reward(action, molecules_updated, in_game_score):
+    imediate_reward = 0.0
+
+    molecules_updated[-1].alpha_dir = action/NR_ACTIONS*2*PI
+    molecules_updated[-1].update()
+
+    for i, m in enumerate(molecules_updated[:-1]):
+        if molecules_updated[-1].is_coliding(m):
+            if m.status == ENEMY:
+                imediate_reward -= 1.0
+            else:
+                imediate_reward += 1.0
+
+    return 0.0 + imediate_reward
+
+
 def init_new_game():
     global molecules, score, nr_allies_left, neural_network
     molecules = []
@@ -67,36 +93,43 @@ def init_new_game():
     score = 0
     nr_allies_left = NR_ALLIES_INIT
 
-pygame.init()
-font = pygame.font.Font('freesansbold.ttf', 32)
-screen = pygame.display.set_mode([GAME_WIDTH, GAME_HEIGHT])
+if VISUAL_ACTIVATED:
+    pygame.init()
+    font = pygame.font.Font('freesansbold.ttf', 32)
+    screen = pygame.display.set_mode([GAME_WIDTH, GAME_HEIGHT])
+
 init_new_game()
 
 running = True
 frame = 0
 generation = 1
+start_time = time.time()
+total_frames = 0
+average_score = 0
 while running:
-
     # Did the user click the window close button?
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+    if VISUAL_ACTIVATED:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
 
     # Fill the background with white - TO CLEAR THE BACKGROUND
-    screen.fill(WHITE)
+    if VISUAL_ACTIVATED:
+        screen.fill(WHITE)
 
     # Draw
-    text = font.render("Score: " + str(score), True, BLACK, WHITE)
-    textRect = text.get_rect() 
-    textRect.center = (100, 50)
-    screen.blit(text, textRect)
+    if VISUAL_ACTIVATED:
+        text = font.render("Score: " + str(score), True, BLACK, WHITE)
+        textRect = text.get_rect() 
+        textRect.center = (100, 50)
+        screen.blit(text, textRect)
 
-    text = font.render("Frame: " + str(frame), True, BLACK, WHITE)
-    textRect = text.get_rect() 
-    textRect.center = (GAME_WIDTH-100, 50)
-    screen.blit(text, textRect)
+        text = font.render("Frame: " + str(frame), True, BLACK, WHITE)
+        textRect = text.get_rect() 
+        textRect.center = (GAME_WIDTH-100, 50)
+        screen.blit(text, textRect)
 
-    render_molecule(screen, molecules)
+        render_molecule(screen, molecules)
 
     input_values = [
         molecules[-1].x / GAME_WIDTH, 
@@ -116,8 +149,11 @@ while running:
     for i, m in enumerate(molecules[:-1]):
         m.update()
     
-    action = neural_network.feed(input_values, eval_func=eval_position, 
-                                molecules=copy.deepcopy(molecules), in_game_score = score)
+    if not TEST_MODE:
+        action = neural_network.feed(input_values, eval_func=eval_imidiate_reward, 
+                                    molecules=copy.deepcopy(molecules), in_game_score = score)
+    else:
+        action = neural_network.best_act(input_values)
     molecules[-1].alpha_dir = action/NR_ACTIONS*2*PI
     molecules[-1].update()
 
@@ -139,16 +175,30 @@ while running:
             molecules[i] = Molecule(x=x, y=y, status=status)
 
     # Flip the display
-    pygame.display.update()
+    if VISUAL_ACTIVATED:
+        pygame.display.update()
 
     if nr_allies_left == 0 or frame >= NR_MAX_FRAMES:
-        if generation % 10 == 0:
-            print("Generation[", generation, "]: " , score, sep="")
-        neural_network.update()
+        if generation % NR_GEN_CHECK == 0:
+            print("Generation[", generation - NR_GEN_CHECK + 1,"-",generation, "]: " , 
+                  average_score / NR_GEN_CHECK, sep="")
+            average_score = 0
+            end_time = time.time()
+            duration = end_time - start_time
+            print("FPS: ", total_frames // duration, sep="")
+            start_time = time.time()
+            total_frames = 0
+            
+        if not TEST_MODE:
+            neural_network.update(generation)
+        average_score += score
         init_new_game()
+        total_frames += frame
         frame = 0
         generation += 1
 
     frame += 1
+    if VISUAL_ACTIVATED and SLEEP_DELAY:
+        time.sleep(SLEEP_DELAY)
 
 pygame.quit()

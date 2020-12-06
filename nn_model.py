@@ -1,18 +1,20 @@
 from molecule import *
-import pylab
 import numpy as np
 from keras.models import Model, load_model
 from keras.layers import Input, Dense, Lambda, Add, Conv2D, Flatten
 from keras.optimizers import Adam, RMSprop
 from keras import backend as K
-import cv2
+import os
 
 EPS = 0.0001
-GAMMA = 0.99
+GAMMA = 0.90
+# current_directory = os.getcwd() + "\\Trainings"
+current_directory = "F:\\Programming Projects\\Python\\Neural Network Project\\Trainings"
+agent_nr_location = "agent_nr.nr"
 
 def get_models(nr_inputs, nr_actions, lr):
     input_shape = (nr_inputs,)
-    nr_hidden = 128
+    nr_hidden = 256
 
     X_input = Input(input_shape)
 
@@ -39,12 +41,24 @@ def get_models(nr_inputs, nr_actions, lr):
 
 class Neural_Network:
     def __init__(self):
-        self.lr = 0.01
+        self.lr = 0.000025
 
         self.states, self.actions, self.rewards = [], [], []
+        
+        self.scores, self.averages = [], []
+        self.score = 0.0
+        self.max_average = -30000.0
 
         self.nr_inputs = NR_INPUTS
         self.action_size = NR_ACTIONS
+
+        with open(current_directory + "//" + agent_nr_location, "r") as file:
+            nr = int(file.readline())
+
+        with open(current_directory + "//" + agent_nr_location, "w") as file:
+            file.write(str(nr+1))
+
+        self.Model_name = "Agent_" + str(nr)
 
         self.Actor, self.Critic = get_models(nr_inputs=self.nr_inputs, nr_actions=self.action_size, lr=self.lr)
 
@@ -57,9 +71,13 @@ class Neural_Network:
 
     def act(self, state):
         prediction = self.Actor.predict(state)[0]
-        # print(prediction)
         action = np.random.choice(self.action_size, p=prediction)
-        # action = np.argmax(prediction)
+        return action
+
+    def best_act(self, state):
+        np_input_values = np.asarray([state])
+        prediction = self.Actor.predict(np_input_values)[0]
+        action = np.argmax(prediction)
         return action
 
     def discount_rewards(self, reward):
@@ -68,15 +86,39 @@ class Neural_Network:
         discounted_r = np.zeros_like(reward)
         # print(reward)
         for i in reversed(range(0,len(reward))):
+            if reward[i] != 0:
+                running_add = 0
             running_add = running_add * GAMMA + reward[i]
             discounted_r[i] = running_add
 
         discounted_r -= np.mean(discounted_r) # normalizing the result
+        # print(discounted_r)
         discounted_r /= np.std(discounted_r) + EPS # divide by standard deviation
         # print(discounted_r)
         return discounted_r
 
-    def update(self):
+    def load(self, agent_id, to_compile=False):
+        actor_name = "Agent_" + agent_id + "_Actor.h5"
+        critic_name = "Agent_" + agent_id + "_Critic.h5"
+        
+        self.Actor = load_model(current_directory + "//" + actor_name, compile=to_compile)
+        self.Critic = load_model(current_directory + "//" + critic_name, compile=to_compile)
+
+    def save(self, save_type):
+        self.Actor.save(current_directory + "//" + self.Model_name + "_" + save_type +'_Actor.h5')
+        self.Critic.save(current_directory + "//" + self.Model_name + "_" + save_type + '_Critic.h5')
+
+    def update(self, generation):
+        self.scores.append(self.score)
+        self.averages.append(sum(self.scores[-50:]) / len(self.scores[-50:]))
+        average = self.averages[-1]
+
+        self.save("last")
+        if average >= self.max_average and len(self.scores[-50:]) == 50:
+            self.max_average = average
+            self.save("best")
+            print("Generation[", generation, "]: Improvement Saved", sep="")
+
         # reshape memory to appropriate shape for training
         states = np.vstack(self.states)
         actions = np.vstack(self.actions)
@@ -84,19 +126,19 @@ class Neural_Network:
         # Compute discounted rewards
         discounted_r = self.discount_rewards(self.rewards)
 
-        # print(discounted_r)
-
         # Get Critic network predictions
         values = self.Critic.predict(states)[:, 0]
-        # print(values)
 
         # Compute advantages
         advantages = discounted_r - values
+
         # training Actor and Critic networks
         self.Actor.fit(states, actions, sample_weight=advantages, epochs=1, verbose=0)
         self.Critic.fit(states, discounted_r, epochs=1, verbose=0)
+
         # reset training memory
         self.states, self.actions, self.rewards = [], [], []
+        self.score = 0
 
     def feed(self, input_values, eval_func, molecules, in_game_score):
         np_input_values = np.asarray([input_values])
@@ -104,4 +146,5 @@ class Neural_Network:
         action = self.act(np_input_values)
         reward = eval_func(action, molecules, in_game_score)
         self.remember(input_values, action, reward)
+        self.score += reward
         return action
