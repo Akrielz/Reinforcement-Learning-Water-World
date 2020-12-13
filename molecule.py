@@ -28,5 +28,3 @@ class Molecule:
 
     def is_coliding(self, other):
         return self.distance_to(other) < self.r + other.r
-
-        

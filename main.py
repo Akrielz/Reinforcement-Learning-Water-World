@@ -1,5 +1,6 @@
 import pygame
-from nn_model import *
+# from nn_model import *
+from nn_dqn import *
 import copy
 import time
 
@@ -7,7 +8,7 @@ molecules = None
 score = None
 nr_allies_left = None
 
-neural_network = Neural_Network()
+neural_network = Neural_Network_V2()
 if TEST_MODE:
     neural_network.load(TEST_MODEL_ID, False)
 
@@ -57,14 +58,11 @@ def eval_score(action, molecules_updated, in_game_score):
     return 0.0 + in_game_score
 
 
-def eval_imidiate_reward(action, molecules_updated, in_game_score):
+def eval_imidiate_reward(molecules):
     imediate_reward = 0.0
 
-    molecules_updated[-1].alpha_dir = action/NR_ACTIONS*2*PI
-    molecules_updated[-1].update()
-
-    for i, m in enumerate(molecules_updated[:-1]):
-        if molecules_updated[-1].is_coliding(m):
+    for i, m in enumerate(molecules[:-1]):
+        if molecules[-1].is_coliding(m):
             if m.status == ENEMY:
                 imediate_reward -= 1.0
             else:
@@ -74,7 +72,7 @@ def eval_imidiate_reward(action, molecules_updated, in_game_score):
 
 
 def init_new_game():
-    global molecules, score, nr_allies_left, neural_network
+    global molecules, score, nr_allies_left
     molecules = []
     for _ in range(NR_ENEMIES_INIT + NR_ALLIES_INIT + 1):
         x = np.random.random_sample() * (GAME_WIDTH - OFFSET) + OFFSET / 2
@@ -92,6 +90,26 @@ def init_new_game():
 
     score = 0
     nr_allies_left = NR_ALLIES_INIT
+
+def get_state(molecules):
+    input_values = [
+        molecules[-1].x / GAME_WIDTH, 
+        molecules[-1].y / GAME_HEIGHT,
+        molecules[-1].r / MAXIMUM_RADIUS, 
+        molecules[-1].speed / MAXIMUM_RADIUS
+    ]
+    for i, m in enumerate(molecules[:-1]):
+        input_values.append(m.x / GAME_WIDTH)
+        input_values.append(m.y / GAME_HEIGHT)
+        input_values.append(molecules[-1].x-m.x / GAME_WIDTH)
+        input_values.append(molecules[-1].y-m.y / GAME_HEIGHT)
+        input_values.append(m.r / MAXIMUM_RADIUS)
+        input_values.append(m.speed / MAXIMUM_RADIUS)
+        input_values.append((m.status + 1) / 2)
+        input_values.append(m.alpha_dir / (2*PI))
+        input_values.append(molecules[-1].distance_to(m) / GAME_MAX_DISTANCE)
+    
+    return input_values
 
 if VISUAL_ACTIVATED:
     pygame.init()
@@ -131,31 +149,20 @@ while running:
 
         render_molecule(screen, molecules)
 
-    input_values = [
-        molecules[-1].x / GAME_WIDTH, 
-        molecules[-1].y / GAME_HEIGHT,
-        molecules[-1].r / MAXIMUM_RADIUS, 
-        molecules[-1].speed / MAXIMUM_RADIUS
-    ]
-    for i, m in enumerate(molecules[:-1]):
-        input_values.append(m.x / GAME_WIDTH)
-        input_values.append(m.y / GAME_HEIGHT)
-        input_values.append(m.r / MAXIMUM_RADIUS)
-        input_values.append(m.speed / MAXIMUM_RADIUS)
-        input_values.append((m.status + 1) / 2)
-        input_values.append(m.alpha_dir / (2*PI))
-        input_values.append(molecules[-1].distance_to(m) / GAME_MAX_DISTANCE)
-    
-    for i, m in enumerate(molecules[:-1]):
-        m.update()
+    current_state = get_state(molecules)
     
     if not TEST_MODE:
-        action = neural_network.feed(input_values, eval_func=eval_imidiate_reward, 
-                                    molecules=copy.deepcopy(molecules), in_game_score = score)
+        action = neural_network.act(current_state)
     else:
-        action = neural_network.best_act(input_values)
+        action = neural_network.best_act(current_state)
+
     molecules[-1].alpha_dir = action/NR_ACTIONS*2*PI
-    molecules[-1].update()
+
+    for i, m in enumerate(molecules):
+        m.update()
+
+    next_state = get_state(molecules)
+    reward = eval_imidiate_reward(molecules)
 
     for i, m in enumerate(molecules[:-1]):
         if molecules[-1].is_coliding(m):
@@ -174,11 +181,15 @@ while running:
 
             molecules[i] = Molecule(x=x, y=y, status=status)
 
+    done = nr_allies_left == 0 or frame >= NR_MAX_FRAMES
+    
+    neural_network.feed(current_state, action, next_state, reward, done, frame)
+
     # Flip the display
     if VISUAL_ACTIVATED:
         pygame.display.update()
 
-    if nr_allies_left == 0 or frame >= NR_MAX_FRAMES:
+    if done:
         if generation % NR_GEN_CHECK == 0:
             print("Generation[", generation - NR_GEN_CHECK + 1,"-",generation, "]: " , 
                   average_score / NR_GEN_CHECK, sep="")
@@ -191,6 +202,7 @@ while running:
             
         if not TEST_MODE:
             neural_network.update(generation)
+
         average_score += score
         init_new_game()
         total_frames += frame

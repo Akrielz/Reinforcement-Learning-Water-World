@@ -9,7 +9,7 @@ OFFSET = 100
 
 # Visual Constants
 VISUAL_ACTIVATED = True
-SLEEP_DELAY = 1/120
+SLEEP_DELAY = 0 #1/120
 
 # Frame Constants
 NR_MAX_FRAMES = 1000
@@ -42,12 +42,12 @@ NR_ALLIES_INIT = 7
 ENEMY_CHANCE = 0.5
 
 # Neural Network Strats
-NR_INPUTS = 4+7*(NR_ENEMIES_INIT+NR_ALLIES_INIT)
+NR_INPUTS = 4+9*(NR_ENEMIES_INIT+NR_ALLIES_INIT)
 NR_ACTIONS = 16
 
 # Neural Network State
-TEST_MODE = True
-TEST_MODEL_ID = "71_last"
+TEST_MODE = False
+TEST_MODEL_ID = "153_last"
 CONTINUE_MODEL = False
 
 # Checking Rule
