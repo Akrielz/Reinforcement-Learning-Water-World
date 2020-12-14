@@ -7,6 +7,7 @@ import time
 molecules = None 
 score = None
 nr_allies_left = None
+sensors = None
 
 neural_network = Neural_Network_V2()
 if TEST_MODE:
@@ -24,6 +25,13 @@ def render_molecule(screen, molecules):
             color = GREEN
         elif m.status == PLAYER:
             color = BLUE
+        elif m.status == SENSOR:
+            if m.detected == NOTHING_DETECTED:
+                color = GRAY
+            if m.detected == ENEMY_DETECTED:
+                color = PINK
+            if m.detected == ALLY_DETECTED:
+                color = LIME 
 
         pygame.draw.circle(screen, color, (m.x, m.y), m.r)
 
@@ -72,7 +80,7 @@ def eval_imidiate_reward(molecules):
 
 
 def init_new_game():
-    global molecules, score, nr_allies_left
+    global molecules, score, nr_allies_left, sensors
     molecules = []
     for _ in range(NR_ENEMIES_INIT + NR_ALLIES_INIT + 1):
         x = np.random.random_sample() * (GAME_WIDTH - OFFSET) + OFFSET / 2
@@ -88,6 +96,18 @@ def init_new_game():
         molecule = Molecule(x=x, y=y, status=status)
         molecules.append(molecule)
 
+    p = molecules[-1]
+
+    sensors = []
+    for strat in range(NR_STRATS):
+        for j in range(IN_STRAT[strat]): 
+            angle = j/IN_STRAT[strat]*2*PI
+            x = p.x + DIST_STRAT[strat]*np.math.cos(angle)
+            y = p.y + DIST_STRAT[strat]*np.math.sin(angle)
+            status = SENSOR
+            sensor = Sensor(x, y, status, radius=RADIUS_STRATS[strat])
+            sensors.append(sensor)
+        
     score = 0
     nr_allies_left = NR_ALLIES_INIT
 
@@ -109,6 +129,12 @@ def get_state(molecules):
         input_values.append(m.alpha_dir / (2*PI))
         input_values.append(molecules[-1].distance_to(m) / GAME_MAX_DISTANCE)
     
+    return input_values
+
+def get_sensors_state(sensors):
+    input_values = []
+    for i, s in enumerate(sensors):
+        input_values.append(s.detected)
     return input_values
 
 if VISUAL_ACTIVATED:
@@ -147,21 +173,34 @@ while running:
         textRect.center = (GAME_WIDTH-100, 50)
         screen.blit(text, textRect)
 
+        render_molecule(screen, sensors)
         render_molecule(screen, molecules)
 
-    current_state = get_state(molecules)
+    #current_state = get_state(molecules)
+    current_state = get_sensors_state(sensors)
     
     if not TEST_MODE:
         action = neural_network.act(current_state)
     else:
         action = neural_network.best_act(current_state)
 
+    dx = molecules[-1].x
+    dy = molecules[-1].y
     molecules[-1].alpha_dir = action/NR_ACTIONS*2*PI
 
-    for i, m in enumerate(molecules):
+    for i, m in enumerate(molecules[:-1]):
         m.update()
+    molecules[-1].update(is_player = True)
 
-    next_state = get_state(molecules)
+    dx = molecules[-1].x - dx
+    dy = molecules[-1].y - dy
+
+    for i, s in enumerate(sensors):
+        s.x += dx
+        s.y += dy
+        s.x = (s.x + GAME_WIDTH) % GAME_WIDTH
+        s.y = (s.y + GAME_HEIGHT) % GAME_HEIGHT
+
     reward = eval_imidiate_reward(molecules)
 
     for i, m in enumerate(molecules[:-1]):
@@ -181,9 +220,29 @@ while running:
 
             molecules[i] = Molecule(x=x, y=y, status=status)
 
+    #current_state = get_state(molecules)
+    next_state = get_sensors_state(sensors)
+
+    for i, s in enumerate(sensors):
+        s.detected = NOTHING_DETECTED
+
+        if s.x >= GAME_WIDTH or s.x <= 0 or s.y >= GAME_HEIGHT or s.y <= 0:
+            # s.detected = ENEMY_DETECTED
+            continue
+
+        for j, m in enumerate(molecules[:-1]):
+            if s.is_coliding(m):
+                if m.status == ENEMY:
+                    s.detected = ENEMY_DETECTED
+                    break
+                elif m.status == ALLY:
+                    s.detected = ALLY_DETECTED
+                    break
+
     done = nr_allies_left == 0 or frame >= NR_MAX_FRAMES
     
-    neural_network.feed(current_state, action, next_state, reward, done, frame)
+    if not TEST_MODE:
+        neural_network.feed(current_state, action, next_state, reward, done, frame)
 
     # Flip the display
     if VISUAL_ACTIVATED:

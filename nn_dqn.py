@@ -73,6 +73,7 @@ class ReplayBuffer(object):
 
 class Neural_Network_V2:
     def __init__(self):
+        self.best = -300
         self.main_nn = DQN()
         self.target_nn = DQN()
 
@@ -121,7 +122,7 @@ class Neural_Network_V2:
             ws_main.append(np.load(file_path_main))
             ws_target.append(np.load(file_path_target))
         
-        mock_state = [0 for x in range(num_features)]
+        mock_state = [0 for x in range(85)]
         state_in = np.asarray([mock_state])
 
         p1 = self.main_nn(state_in)
@@ -191,10 +192,17 @@ class Neural_Network_V2:
             self.last_100_ep_rewards = self.last_100_ep_rewards[1:]
         self.last_100_ep_rewards.append(self.ep_reward)
 
+        mean = np.mean(self.last_100_ep_rewards)
+
         if generation % 50 == 0:
             print("Generation[", generation, "]: ",
-            "\n\tEpsilon: ", self.epsilon, 
-            "\n\tReward in last 100 Generations: ", np.mean(self.last_100_ep_rewards))
+            "\n |  Epsilon: ", self.epsilon, 
+            "\n |_ Reward in last 100 Generations: ", mean,
+            sep="")
 
         self.ep_reward = 0
         self.save("last")
+        if generation > 50 and self.best < mean:
+            self.best = mean
+            print("Generation[", generation, "]: Improvement saved!", sep="")
+            self.save("best")
