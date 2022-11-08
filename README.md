@@ -27,6 +27,10 @@ the state of his own vision sensors.
     [LinkedIn](https://www.linkedin.com/in/robert-milea-027a2420a/) | 
     [GitHub](https://github.com/DuArms/)
   )
+  
+<a href="https://github.com/Akrielz/Reinforcement-Learning-Water-World/graphs/contributors">
+  <img src="https://contributors-img.web.app/image?repo=Akrielz/Reinforcement-Learning-Water-World" width = 200/>
+</a>
 
 ## Useful links
 
