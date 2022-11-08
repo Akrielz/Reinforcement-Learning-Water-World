@@ -20,7 +20,7 @@ the state of his own vision sensors.
 ## Team Members
 
 <a href="https://github.com/Akrielz/Reinforcement-Learning-Water-World/graphs/contributors">
-  <img src="https://contributors-img.web.app/image?repo=Akrielz/Reinforcement-Learning-Water-World" width = 200/>
+  <img src="https://contributors-img.web.app/image?repo=Akrielz/Reinforcement-Learning-Water-World"/>
 </a>
 
 - Alexandru Știrbu (
